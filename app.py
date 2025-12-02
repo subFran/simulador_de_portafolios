@@ -41,24 +41,17 @@ def get_adj_close(tickers):
         auto_adjust=True,
         progress=False
     )
-    # Manejar estructura de columnas de yfinance (MultiIndex o SingleIndex)
+    # Tomar la tabla de 'Close' y eliminar filas con NA (comportamiento tipo Excel)
     if isinstance(data.columns, pd.MultiIndex):
-        # Cuando yfinance devuelve multiindex (Open, High, Low, Close, Adj Close...)
-        # intentamos tomar 'Close' o lo que esté disponible
         if 'Close' in data.columns.get_level_values(0):
-            adj_close = data['Close']
+            adj_close = data['Close'].dropna()
         else:
-            adj_close = data
+            adj_close = data.dropna()
     else:
-        # SingleIndex: puede ser directamente la serie ajustada (cada columna = ticker)
         if 'Close' in data.columns:
-            adj_close = data['Close']
+            adj_close = data['Close'].dropna()
         else:
-            adj_close = data
-
-    # No eliminar columnas parcialmente válidas: solo eliminar filas totalmente vacías
-    adj_close = adj_close.dropna(how='all')
-
+            adj_close = data.dropna()
     return adj_close
 
 # ===== 3. FUNCIÓN PARA CALCULAR ESTADÍSTICAS DEL PORTAFOLIO =====
@@ -67,47 +60,31 @@ def portafolio_stats(tickers, pesos):
     if adj_close.empty:
         st.error("No se obtuvieron precios ajustados para los tickers solicitados.")
         raise ValueError("No hay datos históricos para los tickers.")
-    returns = adj_close.pct_change().dropna(how='all')
+
+    # Usar solo filas completas (dropna any) para reproducir el comportamiento del notebook/Excel
+    returns = adj_close.pct_change().dropna()
     if returns.empty:
         st.error("No se pudieron calcular rendimientos (pct_change) con los datos descargados.")
         raise ValueError("Rendimientos vacíos.")
 
-    # Asegurar que los pesos coincidan con las columnas disponibles
-    available_tickers = returns.columns.intersection(tickers)
-    
-    if len(available_tickers) == 0:
-        st.error("No se pudieron descargar datos para ninguno de los tickers del portafolio.")
-        raise ValueError("No available tickers in returns.")
-    
+    # Asegurarse de que las columnas estén en el orden de 'tickers'
+    # Si falta algún ticker, avisar y usar los que hayan quedado (pero idealmente no hay NAs por dropna())
+    available_tickers = [t for t in tickers if t in returns.columns]
     if len(available_tickers) != len(tickers):
-        st.warning(f"Algunos tickers no se pudieron descargar. Usando: {available_tickers.tolist()}")
+        st.warning(f"Algunos tickers faltan tras filtrar filas: usando {available_tickers}")
 
     # Re-alinear pesos según el orden de available_tickers
     weights_map = {t: float(pesos[i]) for i, t in enumerate(tickers)}
     pesos_disp = np.array([weights_map[t] for t in available_tickers], dtype=float)
-    total = pesos_disp.sum()
-    if total <= 0:
-        st.error("La suma de pesos disponibles es 0 o negativa después de filtrar tickers.")
-        raise ValueError("Invalid weights after filtering tickers.")
-    pesos_disp = pesos_disp / total
+    pesos_disp = pesos_disp / pesos_disp.sum()
 
-    # Cálculos
+    # Cálculos (cov() por defecto usa ddof=1, que coincide con el notebook original)
     mean_mensual = returns[available_tickers].mean().dot(pesos_disp)
-
     cov_matrix = returns[available_tickers].cov()
-
-    # Manejar casos de 1 ticker (cov_matrix puede ser scalar o DataFrame 1x1)
-    if isinstance(cov_matrix, pd.Series) or (hasattr(cov_matrix, "shape") and cov_matrix.shape == () ): 
-        # cov_matrix es escalar
-        var_single = float(cov_matrix)
-        port_var_mensual = (pesos_disp[0] ** 2) * var_single
-    else:
-        # Asegurar que estamos usando la matriz en el mismo orden
-        cov_vals = cov_matrix.loc[available_tickers, available_tickers].values
-        port_var_mensual = float(pesos_disp.T @ cov_vals @ pesos_disp)
-
+    cov_vals = cov_matrix.loc[available_tickers, available_tickers].values
+    port_var_mensual = float(pesos_disp.T @ cov_vals @ pesos_disp)
     port_std_mensual = np.sqrt(port_var_mensual)
-    
+
     return mean_mensual, port_var_mensual, port_std_mensual
 
 # ===== SIDEBAR - CONTROLES =====
@@ -122,7 +99,6 @@ tipo_tasa = st.sidebar.selectbox("Tipo de Tasa", ['Mensual histórica', 'Anual e
 simulaciones = st.sidebar.slider("Número de Simulaciones (Monte Carlo)", 100, 5000, 1000)
 
 # ===== LÓGICA PRINCIPAL =====
-
 tickers = portafolios[tipo_portafolio]['tickers']
 pesos = portafolios[tipo_portafolio]['pesos']
 
