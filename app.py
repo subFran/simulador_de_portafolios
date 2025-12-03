@@ -1,335 +1,216 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
 from datetime import datetime
 
-# ========================
-#   CONFIGURACIÓN DE LA PÁGINA
-# ========================
-st.set_page_config(
-    page_title="Simulador de Portafolios — Qori",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ===== CONFIGURACIÓN DE PÁGINA =====
+st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
-# ========================
-#   ESTILO (SOLO COLORES DE LA PÁGINA)
-# ========================
-st.markdown(
-    """
-    <style>
-    :root{
-        --qori-green: #00FF7F;
-        --qori-dark: #060606;
-    }
-    html, body, #root, .streamlit-container {
-        background-color: var(--qori-dark) !important;
-        color: var(--qori-green) !important;
-        font-family: 'Inter', sans-serif;
-    }
-    .stApp {
-        background: linear-gradient(180deg, rgba(6,6,6,1) 0%, rgba(10,10,10,1) 100%) !important;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #070707 !important;
-        border-right: 1px solid rgba(0,255,127,0.06);
-    }
-    input, .stTextInput, .stNumberInput, .stSelectbox, .stDateInput {
-        background-color: #0b0b0b !important;
-        color: var(--qori-green) !important;
-        border: 1px solid rgba(0,255,127,0.08) !important;
-    }
-    .stButton>button {
-        background: linear-gradient(90deg, rgba(0,255,127,0.95), rgba(0,205,100,0.95)) !important;
-        color: #000 !important;
-        border-radius: 10px !important;
-        font-weight: 600 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+st.title("📊 Simulador de Portafolio de Inversión")
 
-st.title("Simulador de Portafolios — (Monte Carlo + Proyección)")
-
-# ========================
-#     PORTAFOLIOS PREDEFINIDOS
-# ========================
+# ===== 1. DEFINIR PORTAFOLIOS Y PESOS =====
 portafolios = {
     'Bajo': {
-        'tickers': ['AGG', 'GLD', 'LQD', 'VIG'],
+        'tickers': ['AGG','GLD','LQD','VIG'],
         'pesos': np.array([0.4, 0.1, 0.3, 0.2])
     },
     'Medio': {
-        'tickers': ['AGG', 'GLD', 'LQD', 'QQQ', 'SPY'],
+        'tickers': ['AGG','GLD','LQD','QQQ','SPY'],
         'pesos': np.array([0.25, 0.1, 0.15, 0.25, 0.25])
     },
     'Alto': {
-        'tickers': ['ARKK', 'NVDA', 'QQQ', 'TSLA', 'XBI'],
+        'tickers': ['ARKK','NVDA','QQQ','TSLA','XBI'],
         'pesos': np.array([0.2, 0.2, 0.3, 0.1, 0.2])
     }
 }
 
-# ------------------------
-# SIDEBAR: CONTROLES (basados en tu notebook original)
-# ------------------------
-st.sidebar.header("Configuración")
-
-selected_portfolio = st.sidebar.selectbox('Tipo de portafolio', list(portafolios.keys()))
-tickers = portafolios[selected_portfolio]['tickers']
-preset_weights = portafolios[selected_portfolio]['pesos']
-
-# Opción para editar o bloquear pesos (respeta tu comportamiento anterior)
-edit_weights = st.sidebar.checkbox("Editar pesos manualmente", value=False, help="Si está desactivado se usan los pesos predefinidos y no se pueden editar.")
-weights = {}
-if edit_weights:
-    st.sidebar.markdown("Pesos (sumar 1.0)")
-    for i, tk in enumerate(tickers):
-        weights[tk] = st.sidebar.number_input(f"{tk}", min_value=0.0, max_value=1.0, value=float(preset_weights[i]), step=0.01, format="%.2f")
-else:
-    st.sidebar.markdown("Pesos (predefinidos)")
-    for i, tk in enumerate(tickers):
-        st.sidebar.write(f"{tk}: {preset_weights[i]:.2f}")
-    weights = {tickers[i]: float(preset_weights[i]) for i in range(len(tickers))}
-
-# Moneda y tipo de cambio (como pediste)
-st.sidebar.markdown("---")
-currency = st.sidebar.selectbox("Moneda de visualización", ["PEN", "USD"])
-exchange_rate = None
-if currency == "PEN":
-    exchange_rate = st.sidebar.number_input("Tipo de cambio (PEN por USD)", min_value=0.0, value=3.8, step=0.01)
-
-# Monto inicial y contribuciones (separados)
-st.sidebar.markdown("---")
-initial_capital = st.sidebar.number_input("Monto inicial (en la moneda seleccionada)", min_value=0.0, value=10000.0, step=100.0)
-
-st.sidebar.markdown("---")
-st.sidebar.header("Contribuciones")
-contrib_bool = st.sidebar.radio("¿Agregar contribuciones periódicas?", ["No", "Sí"])
-monthly_contrib = 0.0
-if contrib_bool == "Sí":
-    monthly_contrib = st.sidebar.number_input("Monto de contribución (mensual, en la moneda seleccionada)", min_value=0.0, value=0.0, step=10.0)
-
-# Periodo y fechas
-st.sidebar.markdown("---")
-years = st.sidebar.slider("Horizonte (años)", min_value=1, max_value=30, value=5)
-start_date = st.sidebar.date_input("Fecha de inicio para datos (ej: 2015-01-01)", value=pd.to_datetime("2015-01-01"))
-end_date = st.sidebar.date_input("Fecha final para datos (ej: hoy)", value=pd.to_datetime(datetime.today().date()))
-
-# Tipo de tasa y simulaciones (como tu notebook)
-st.sidebar.markdown("---")
-tipo_tasa = st.sidebar.selectbox("Tipo de tasa", ['Mensual histórica', 'Anual equivalente'])
-simulations = st.sidebar.number_input("Número de simulaciones (Monte Carlo)", min_value=100, max_value=20000, value=1000, step=100)
-
-# Botón de correr
-run_btn = st.sidebar.button("Ejecutar simulación")
-
-# ========================
-#    FUNCIONES AUXILIARES
-# ========================
+# ===== 2. FUNCIÓN PARA DESCARGAR PRECIOS AJUSTADOS (CACHED) =====
 @st.cache_data
-def get_adj_close(tickers, start, end):
-    """Descarga precios ajustados mensuales usando yfinance (Close con interval 1mo)."""
-    # yfinance returns multiindex for multiple tickers; request 'Close' then dropna
-    data = yf.download(tickers, start=start, end=end, interval='1mo', auto_adjust=True, progress=False)
+def get_adj_close(tickers):
+    start_date = '2022-12-01'
+    end_date = '2025-12-01'
+
+    # Descargar datos
+    data = yf.download(
+        tickers,
+        start=start_date,
+        end=end_date,
+        interval='1mo',
+        auto_adjust=True,
+        progress=False
+    )
+
+    # Tomar la tabla de 'Close' y eliminar filas con NA (comportamiento tipo Excel)
     if isinstance(data.columns, pd.MultiIndex):
         if 'Close' in data.columns.get_level_values(0):
-            adj = data['Close']
+            adj_close = data['Close'].dropna()
         else:
-            # try 'Adj Close' fallback
-            if 'Adj Close' in data.columns.get_level_values(0):
-                adj = data['Adj Close']
-            else:
-                adj = data.dropna(axis=1, how='all')
+            adj_close = data.dropna()
     else:
         if 'Close' in data.columns:
-            adj = data['Close']
-        elif 'Adj Close' in data.columns:
-            adj = data['Adj Close']
+            adj_close = data['Close'].dropna()
         else:
-            adj = data
-    if isinstance(adj, pd.Series):
-        adj = adj.to_frame(name=tickers[0])
-    return adj.dropna(how='all')
+            adj_close = data.dropna()
 
-def compute_portfolio_stats(adj_close, pesos):
-    """Calcula mean y std mensual del portafolio (basado en retornos históricos)."""
+    return adj_close
+
+# ===== 3. FUNCIÓN PARA CALCULAR ESTADÍSTICAS DEL PORTAFOLIO =====
+def portafolio_stats(tickers, pesos):
+
+    adj_close = get_adj_close(tickers)
+    if adj_close.empty:
+        st.error("No se obtuvieron precios ajustados para los tickers solicitados.")
+        raise ValueError("No hay datos históricos para los tickers.")
+
+    # Usar solo filas completas (dropna any) para reproducir el comportamiento del notebook/Excel
     returns = adj_close.pct_change().dropna()
     if returns.empty:
-        return None, None, None, None
-    # Alinear columnas con pesos
-    weights_series = pd.Series(pesos, index=adj_close.columns).reindex(columns=adj_close.columns, fill_value=0.0)
-    portfolio_returns = returns.mul(weights_series, axis=1).sum(axis=1)
-    mean_mensual = portfolio_returns.mean()
-    std_mensual = portfolio_returns.std()
-    var_mensual = portfolio_returns.var()
-    return mean_mensual, std_mensual, var_mensual, portfolio_returns
+        st.error("No se pudieron calcular rendimientos (pct_change) con los datos descargados.")
+        raise ValueError("Rendimientos vacíos.")
 
-# ========================
-#    LÓGICA AL PRESIONAR "Ejecutar simulación"
-# ========================
-if run_btn:
-    # Validaciones de pesos
-    weights_series = pd.Series(weights)
-    if abs(weights_series.sum() - 1.0) > 1e-6:
-        st.error("Los pesos deben sumar 1.0. Ajusta los pesos o usa los predefinidos.")
-    else:
-        st.info("Descargando datos y calculando estadísticas...")
-        adj = get_adj_close(tickers, start_date, end_date)
-        if adj.empty:
-            st.error("No hay datos para los tickers y rango seleccionado.")
+    # Asegurarse de que las columnas estén en el orden de 'tickers'
+    available_tickers = [t for t in tickers if t in returns.columns]
+    if len(available_tickers) != len(tickers):
+        st.warning(f"Algunos tickers faltan tras filtrar filas: usando {available_tickers}")
+
+    # Re-alinear pesos según el orden de available_tickers
+    weights_map = {t: float(pesos[i]) for i, t in enumerate(tickers)}
+    pesos_disp = np.array([weights_map[t] for t in available_tickers], dtype=float)
+    pesos_disp = pesos_disp / pesos_disp.sum()
+
+    # Cálculos
+    mean_mensual = returns[available_tickers].mean().dot(pesos_disp)
+    cov_matrix = returns[available_tickers].cov()
+    cov_vals = cov_matrix.loc[available_tickers, available_tickers].values
+
+    port_var_mensual = float(pesos_disp.T @ cov_vals @ pesos_disp)
+    port_std_mensual = np.sqrt(port_var_mensual)
+
+    return mean_mensual, port_var_mensual, port_std_mensual
+
+# ===== SIDEBAR - CONTROLES =====
+st.sidebar.header("Parámetros de Simulación")
+
+tipo_portafolio = st.sidebar.selectbox("Perfil de Riesgo", ['Bajo', 'Medio', 'Alto'])
+monto_inicial = st.sidebar.number_input("Monto Inicial", min_value=1000, max_value=1000000, value=10000, step=1000)
+anos = st.sidebar.slider("Horizonte de Inversión (Años)", 1, 10, 5)
+moneda = st.sidebar.selectbox("Moneda", ['PEN', 'USD'])
+tipo_cambio = st.sidebar.number_input("Tipo de Cambio (PEN/USD)", value=3.80, step=0.01)
+tipo_tasa = st.sidebar.selectbox("Tipo de Tasa", ['Mensual histórica', 'Anual equivalente'])
+simulaciones = st.sidebar.slider("Número de Simulaciones (Monte Carlo)", 100, 5000, 1000)
+
+# ===== LÓGICA PRINCIPAL =====
+tickers = portafolios[tipo_portafolio]['tickers']
+pesos = portafolios[tipo_portafolio]['pesos']
+
+# Mostrar composición del portafolio
+st.sidebar.markdown("### Composición")
+df_comp = pd.DataFrame({
+    'Ticker': tickers,
+    'Peso': [f"{p*100:.0f}%" for p in pesos]
+})
+st.sidebar.table(df_comp)
+
+with st.spinner('Descargando datos y calculando...'):
+    try:
+        mean_mensual, var_mensual, std_mensual = portafolio_stats(tickers, pesos)
+
+        # ===== Ajuste según tipo de tasa =====
+        if tipo_tasa == 'Anual equivalente':
+            mean = (1 + mean_mensual)**12 - 1
+            std = std_mensual * np.sqrt(12)
+            var = std**2
         else:
-            # Si algunos tickers no están disponibles, ajustar
-            available = [c for c in adj.columns if c in weights_series.index and weights_series[c] > 0]
-            if len(available) != len(weights_series):
-                missing = set(weights_series.index) - set(available)
-                if missing:
-                    st.warning(f"Se excluirán estos tickers sin datos: {missing}")
-                # keep only available and re-normalize
-                weights_series = weights_series.loc[[c for c in available if c in weights_series.index]]
-                if weights_series.sum() == 0:
-                    st.error("No hay pesos válidos tras excluir tickers sin datos.")
-                    st.stop()
-                weights_series = weights_series / weights_series.sum()
-                adj = adj[weights_series.index]
+            mean = mean_mensual
+            std = std_mensual
+            var = var_mensual
 
-            mean_m, std_m, var_m, portfolio_returns = compute_portfolio_stats(adj, weights_series.values)
-            if mean_m is None:
-                st.error("No se pudo calcular estadísticas con los datos descargados.")
-            else:
-                # Ajuste de tasa si el usuario pidió anual equivalente
-                if tipo_tasa == 'Anual equivalente':
-                    mean = (1 + mean_m)**12 - 1
-                    std = std_m * np.sqrt(12)
-                    # convert back to monthly equivalents for the simulation if needed:
-                    # We will keep simulation in monthly space: convert annual mean/std to monthly:
-                    mean_monthly_for_sim = (1 + mean)**(1/12) - 1
-                    std_monthly_for_sim = std / np.sqrt(12)
-                else:
-                    mean_monthly_for_sim = mean_m
-                    std_monthly_for_sim = std_m
+        # ===== Ajuste monto inicial según moneda =====
+        if moneda.upper() == 'USD':
+            monto = monto_inicial / tipo_cambio
+        else:
+            monto = monto_inicial
 
-                # Moneda: convertimos monto inicial y contribución a USD internamente porque los tickers están en USD
-                if currency == "PEN":
-                    if not exchange_rate or exchange_rate <= 0:
-                        st.error("Ingresa un tipo de cambio válido mayor a 0.")
-                        st.stop()
-                    initial_usd = float(initial_capital) / float(exchange_rate)
-                    contrib_usd = float(monthly_contrib) / float(exchange_rate) if monthly_contrib else 0.0
-                else:
-                    initial_usd = float(initial_capital)
-                    contrib_usd = float(monthly_contrib) if monthly_contrib else 0.0
+        # ===== Valor acumulado determinístico =====
+        meses = anos * 12
+        tiempo = np.arange(0, meses + 1)
+        valores = monto * (1 + mean)**tiempo
 
-                months = int(years * 12)
-                # Proyección determinística con contribuciones mensuales añadidas al final de cada periodo
-                tiempo = np.arange(0, months + 1)
-                deterministico = np.zeros(months + 1)
-                deterministico[0] = initial_usd
-                for t in range(1, months + 1):
-                    deterministico[t] = deterministico[t - 1] * (1 + mean_monthly_for_sim) + contrib_usd
+        # ===== Simulación Monte Carlo =====
+        np.random.seed(42)
+        simulaciones_array = np.zeros((simulaciones, meses+1))
+        simulaciones_array[:,0] = monto
 
-                # Monte Carlo
-                np.random.seed(42)
-                sims = np.zeros((simulations, months + 1))
-                sims[:, 0] = initial_usd
-                for t in range(1, months + 1):
-                    # generar rendimientos mensuales
-                    rs = np.random.normal(loc=mean_monthly_for_sim, scale=std_monthly_for_sim, size=simulations)
-                    sims[:, t] = sims[:, t - 1] * (1 + rs)
-                    if contrib_usd > 0:
-                        sims[:, t] += contrib_usd
+        for t in range(1, meses+1):
+            r = np.random.normal(mean, std, simulaciones)
+            simulaciones_array[:,t] = simulaciones_array[:,t-1] * (1 + r)
 
-                p5 = np.percentile(sims, 5, axis=0)
-                p50 = np.percentile(sims, 50, axis=0)
-                p95 = np.percentile(sims, 95, axis=0)
+        # Percentiles
+        valores_min_mc = np.percentile(simulaciones_array, 5, axis=0)
+        valores_max_mc = np.percentile(simulaciones_array, 95, axis=0)
 
-                # Convertir de USD a moneda seleccionada para mostrar
-                if currency == "PEN":
-                    deterministico_display = deterministico * exchange_rate
-                    p5_disp = p5 * exchange_rate
-                    p50_disp = p50 * exchange_rate
-                    p95_disp = p95 * exchange_rate
-                    axis_label = f"Monto ({currency})"
-                    initial_display = initial_usd * exchange_rate
-                else:
-                    deterministico_display = deterministico.copy()
-                    p5_disp = p5.copy()
-                    p50_disp = p50.copy()
-                    p95_disp = p95.copy()
-                    axis_label = f"Monto ({currency})"
-                    initial_display = initial_usd
+        # ===== Banda ±5% solo para USD =====
+        if moneda.upper() == 'USD':
+            valores_min = valores * 0.95
+            valores_max = valores * 1.05
+        else:
+            valores_min = valores_min_mc
+            valores_max = valores_max_mc
 
-                # ===== Mostrar resultados =====
-                st.subheader("Estadísticas históricas (mensual)")
-                st.write(pd.DataFrame({
-                    "Mean mensual": [f"{mean_m:.4f}"],
-                    "Std mensual": [f"{std_m:.4f}"],
-                    "Var mensual": [f"{var_m:.6f}"]
-                }, index=[f"Portafolio {selected_portfolio}"]))
+        # ===== VISUALIZACIÓN DE RESULTADOS =====
+        # 1. Métricas Principales
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Rendimiento Esperado", f"{mean*100:.2f}%")
+        col2.metric("Volatilidad", f"{std*100:.2f}%")
+        col3.metric("Valor Final Esperado", f"{valores[-1]:,.2f}")
+        col4.metric("Varianza", f"{var:.6f}")
 
-                st.subheader("Proyección y Monte Carlo")
-                fig, ax = plt.subplots(figsize=(10, 5))
-                years_axis = tiempo / 12
-                # Banda MC 5-95%
-                ax.fill_between(years_axis, p5_disp, p95_disp, color="gray", alpha=0.25, label="Banda MC 5-95%")
-                # Mediana MC
-                ax.plot(years_axis, p50_disp, color="#1f77b4", linestyle='--', label="Mediana MC")
-                # Determinístico
-                ax.plot(years_axis, deterministico_display, color="#00FF7F", marker='o', linewidth=2, label="Proyección determinística")
-                # Inicial
-                ax.axhline(y=initial_display, color='r', linestyle='--', label="Monto Inicial")
-                ax.set_title(f"Proyección de Capital - Portafolio {selected_portfolio} ({currency})")
-                ax.set_xlabel("Años")
-                ax.set_ylabel(axis_label)
-                ax.grid(True, linestyle='--', alpha=0.3)
-                ax.legend()
-                ax.set_facecolor("#000000")
-                fig.patch.set_facecolor("#060606")
-                ax.tick_params(colors="#00FF7F")
-                for spine in ax.spines.values():
-                    spine.set_color("#00FF7F")
-                st.pyplot(fig, use_container_width=True)
+        # 2. Gráfico
+        fig, ax = plt.subplots(figsize=(10, 6))
 
-                # Tabla resumen
-                final_det = deterministico_display[-1]
-                final_p5 = p5_disp[-1]
-                final_p50 = p50_disp[-1]
-                final_p95 = p95_disp[-1]
+        # Banda MC
+        ax.fill_between(tiempo/12, valores_min_mc, valores_max_mc, color='gray', alpha=0.3, label='Banda ±90% MC')
 
-                st.subheader("Resumen final esperado")
-                df_res = pd.DataFrame({
-                    "Escenario": ["Determinístico (mean)", "MC 5%", "MC 50% (mediana)", "MC 95%"],
-                    "Valor final": [f"{final_det:,.2f}", f"{final_p5:,.2f}", f"{final_p50:,.2f}", f"{final_p95:,.2f}"]
-                })
-                st.write(df_res.set_index("Escenario"))
+        # Proyección
+        ax.plot(tiempo/12, valores, marker='o', linestyle='-', color='blue', label='Valor proyectado')
 
-                # Sensibilidad tipo de cambio (si aplica)
-                if currency == "PEN":
-                    st.subheader("Sensibilidad al tipo de cambio (±5%)")
-                    tc_down = exchange_rate * 0.95
-                    tc_up = exchange_rate * 1.05
-                    df_tc = pd.DataFrame({
-                        'Tipo de cambio': [tc_down, exchange_rate, tc_up],
-                        f'Valor final ({currency})': [final_det * 0.95, final_det, final_det * 1.05]
-                    })
-                    st.write(df_tc)
+        # Banda TC (USD)
+        if moneda.upper() == 'USD':
+            ax.fill_between(tiempo/12, valores_min, valores_max, color='orange', alpha=0.2, label='Rango TC ±5%')
 
-                # Mostrar últimos valores proyectados (tabla)
-                st.subheader("Valores proyectados (últimos 5 puntos)")
-                df_vals = pd.DataFrame({
-                    "Año": np.round(years_axis, 2),
-                    "Determinístico": deterministico_display,
-                    "MC P5": p5_disp,
-                    "MC P50": p50_disp,
-                    "MC P95": p95_disp
-                })
-                st.write(df_vals.tail(5).set_index("Año"))
+        ax.axhline(
+            y=monto_inicial if moneda.upper()=='PEN' else monto_inicial/tipo_cambio,
+            color='r', linestyle='--', label='Monto Inicial'
+        )
 
-                st.success("Simulación completada.")
+        ax.set_title(f"Proyección de Capital - Portafolio {tipo_portafolio} ({moneda})")
+        ax.set_xlabel("Años")
+        ax.set_ylabel("Monto acumulado")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
 
-else:
-    st.info("Ajusta los parámetros en la barra lateral y presiona 'Ejecutar simulación' para ver proyecciones y Monte Carlo.")
+        st.pyplot(fig)
+
+        # 3. Tabla de Sensibilidad (Solo USD)
+        if moneda.upper() == 'USD':
+            st.subheader("Sensibilidad al Tipo de Cambio (USD)")
+            df_tc = pd.DataFrame({
+                'Escenario': ['TC -5%', 'TC Actual', 'TC +5%'],
+                'Tipo de Cambio': [tipo_cambio*0.95, tipo_cambio, tipo_cambio*1.05],
+                'Valor Final (USD)': [
+                    monto * (1+mean)**meses * 0.95,
+                    monto * (1+mean)**meses,
+                    monto * (1+mean)**meses * 1.05
+                ]
+            })
+            st.table(df_tc.style.format({
+                'Tipo de Cambio': '{:.2f}',
+                'Valor Final (USD)': '{:,.2f}'
+            }))
+
+    except Exception as e:
+        st.error(f"Ocurrió un error en el cálculo: {str(e)}")
+        st.info("Intenta recargar la página o verificar tu conexión a internet para descargar los datos de Yahoo Finance.")
