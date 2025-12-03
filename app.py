@@ -9,6 +9,63 @@ from datetime import datetime
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
+# ===== ESTILOS: TONOS VERDES/NEGROS SUTILES (NO AFECTA GRÁFICO) =====
+st.markdown(
+    """
+    <style>
+    :root{
+      --bg1: #0f2f1f;
+      --bg2: #071912;
+      --card: rgba(10,30,20,0.6);
+      --text: #dbeee0;
+      --muted: #a8d6b6;
+      --btn: #114b2e;
+    }
+
+    /* Contenedor principal */
+    [data-testid="stAppViewContainer"] {
+      background: linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 100%) !important;
+      color: var(--text) !important;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+      background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15)), var(--bg1) !important;
+      color: var(--text) !important;
+    }
+
+    /* Bloques (cards) y contenedores principales */
+    .block-container, .css-1d391kg, .css-1v0mbdj {
+      background-color: transparent !important;
+      color: var(--text) !important;
+    }
+
+    /* Botones */
+    .stButton>button {
+      background-color: var(--btn) !important;
+      color: var(--text) !important;
+      border: 1px solid rgba(255,255,255,0.06) !important;
+    }
+
+    /* Métricas y textos destacados */
+    .stMetric, .stMetric>div, .stMetric>div>div {
+      color: var(--text) !important;
+    }
+
+    /* Asegurar legibilidad de tablas y textos */
+    table, th, td, p, label, h1, h2, h3, h4, h5, h6 {
+      color: var(--text) !important;
+    }
+
+    /* Evitar que el CSS afecte imágenes y gráficos (dejamos matplotlib igual) */
+    img, svg {
+      filter: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("📊 Simulador de Portafolio de Inversión")
 
 # ===== 1. DEFINIR PORTAFOLIOS Y PESOS =====
