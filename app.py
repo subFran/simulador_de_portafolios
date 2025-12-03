@@ -9,57 +9,106 @@ from datetime import datetime
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
-# ===== ESTILOS: TONOS VERDES/NEGROS SUTILES (NO AFECTA GRÁFICO) =====
+# ===== ESTILOS: VERDES/NEGROS MÁS EVIDENTES (NO AFECTA GRÁFICO) =====
 st.markdown(
     """
     <style>
     :root{
-      --bg1: #0f2f1f;
-      --bg2: #071912;
-      --card: rgba(10,30,20,0.6);
-      --text: #dbeee0;
-      --muted: #a8d6b6;
-      --btn: #114b2e;
+      --bg1: #06140f;      /* fondo principal - muy oscuro verdoso */
+      --bg2: #071f18;      /* fondo secundario */
+      --card: rgba(16,50,35,0.85); /* tarjetas/containers */
+      --text: #e6f6ee;     /* texto principal */
+      --muted: #a7d9b8;    /* texto secundario */
+      --accent: #2f8a46;   /* color de botones/acentos */
+      --accent-2: #1f5f33; /* acento oscuro */
+      --border: rgba(255,255,255,0.04);
     }
 
     /* Contenedor principal */
     [data-testid="stAppViewContainer"] {
       background: linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 100%) !important;
       color: var(--text) !important;
+      background-attachment: fixed;
     }
 
     /* Sidebar */
     [data-testid="stSidebar"] {
-      background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15)), var(--bg1) !important;
+      background: linear-gradient(180deg, var(--card), rgba(8,24,20,0.95)) !important;
       color: var(--text) !important;
+      border-right: 1px solid var(--border);
     }
 
-    /* Bloques (cards) y contenedores principales */
-    .block-container, .css-1d391kg, .css-1v0mbdj {
+    /* Block container (contenidos) */
+    .block-container, .reportview-container .main .block-container {
       background-color: transparent !important;
       color: var(--text) !important;
     }
 
+    /* Tarjetas / cajas internas */
+    .css-1d391kg, .css-18e3th9, .css-1v0mbdj {
+      background-color: rgba(10,30,22,0.55) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+      box-shadow: none !important;
+    }
+
+    /* Encabezados y textos */
+    h1, h2, h3, h4, h5, h6, p, label, span {
+      color: var(--text) !important;
+    }
+
+    /* Tablas y dataframes */
+    table, th, td {
+      color: var(--text) !important;
+      border-color: rgba(255,255,255,0.03) !important;
+    }
+
     /* Botones */
-    .stButton>button {
-      background-color: var(--btn) !important;
-      color: var(--text) !important;
-      border: 1px solid rgba(255,255,255,0.06) !important;
+    .stButton>button, button[kind="primary"] {
+      background-color: var(--accent) !important;
+      color: white !important;
+      border: 1px solid var(--accent-2) !important;
+      box-shadow: none !important;
+    }
+    .stButton>button:hover {
+      background-color: #3fa85a !important;
     }
 
-    /* Métricas y textos destacados */
-    .stMetric, .stMetric>div, .stMetric>div>div {
+    /* Inputs / selects / number inputs / sliders */
+    input, textarea, select {
+      background-color: rgba(255,255,255,0.02) !important;
       color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+    }
+    .stSlider>div div[role="slider"], .stSlider>div input {
+      accent-color: var(--accent) !important;
     }
 
-    /* Asegurar legibilidad de tablas y textos */
-    table, th, td, p, label, h1, h2, h3, h4, h5, h6 {
+    /* Métricas (valores) */
+    .stMetric > div, .stMetricValue {
       color: var(--text) !important;
     }
+    .stMetricDelta {
+      color: var(--muted) !important;
+    }
 
-    /* Evitar que el CSS afecte imágenes y gráficos (dejamos matplotlib igual) */
+    /* Links y leyendas */
+    a, .css-1r6slb0 {
+      color: var(--muted) !important;
+    }
+
+    /* Evitar que se afecten imágenes y gráficos (dejamos matplotlib igual) */
     img, svg {
       filter: none !important;
+    }
+
+    /* Scrollbar sutil en sidebar */
+    [data-testid="stSidebar"] ::-webkit-scrollbar {
+      width: 8px;
+    }
+    [data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+      background-color: rgba(255,255,255,0.03);
+      border-radius: 4px;
     }
     </style>
     """,
