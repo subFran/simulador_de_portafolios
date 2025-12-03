@@ -4,6 +4,7 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
+from datetime import datetime
 
 # ========================
 #   CONFIGURACIÓN DE LA PÁGINA
@@ -25,7 +26,6 @@ st.markdown(
         --qori-green: #00FF7F;
         --qori-dark: #060606;
     }
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     html, body, #root, .streamlit-container {
         background-color: var(--qori-dark) !important;
         color: var(--qori-green) !important;
@@ -54,10 +54,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("Simulador de Portafolios – Qori (verde & negro)")
+st.title("Simulador de Portafolios — (Monte Carlo + Proyección)")
 
 # ========================
-#     CONFIGURACIÓN BASE
+#     PORTAFOLIOS PREDEFINIDOS
 # ========================
 portafolios = {
     'Bajo': {
@@ -75,217 +75,261 @@ portafolios = {
 }
 
 # ------------------------
-# BARRA LATERAL: CONTROLES
+# SIDEBAR: CONTROLES (basados en tu notebook original)
 # ------------------------
-st.sidebar.header("Configuración del Portafolio")
+st.sidebar.header("Configuración")
 
-selected_portfolio = st.sidebar.selectbox('Selecciona un portafolio', list(portafolios.keys()))
+selected_portfolio = st.sidebar.selectbox('Tipo de portafolio', list(portafolios.keys()))
 tickers = portafolios[selected_portfolio]['tickers']
 preset_weights = portafolios[selected_portfolio]['pesos']
 
-# Opción: bloquear o permitir edición de pesos (resuelve tu comentario)
-edit_weights = st.sidebar.checkbox("Editar pesos manualmente", value=False, help="Desactiva para usar los pesos predefinidos (no editables).")
-
+# Opción para editar o bloquear pesos (respeta tu comportamiento anterior)
+edit_weights = st.sidebar.checkbox("Editar pesos manualmente", value=False, help="Si está desactivado se usan los pesos predefinidos y no se pueden editar.")
 weights = {}
 if edit_weights:
-    st.sidebar.markdown("### Pesos (ajustables)")
-    for i, ticker in enumerate(tickers):
-        weights[ticker] = st.sidebar.number_input(
-            f"{ticker}",
-            min_value=0.0,
-            max_value=1.0,
-            value=float(preset_weights[i]),
-            step=0.01,
-            format="%.2f"
-        )
+    st.sidebar.markdown("Pesos (sumar 1.0)")
+    for i, tk in enumerate(tickers):
+        weights[tk] = st.sidebar.number_input(f"{tk}", min_value=0.0, max_value=1.0, value=float(preset_weights[i]), step=0.01, format="%.2f")
 else:
-    # Mostrar pesos predefinidos en la sidebar (no editables)
-    st.sidebar.markdown("### Pesos (predefinidos)")
-    for i, ticker in enumerate(tickers):
-        st.sidebar.write(f"{ticker}: {preset_weights[i]:.2f}")
+    st.sidebar.markdown("Pesos (predefinidos)")
+    for i, tk in enumerate(tickers):
+        st.sidebar.write(f"{tk}: {preset_weights[i]:.2f}")
     weights = {tickers[i]: float(preset_weights[i]) for i in range(len(tickers))}
 
-# ------------------------
-# Moneda y tipo de cambio (se restauró, como pediste)
-# ------------------------
+# Moneda y tipo de cambio (como pediste)
 st.sidebar.markdown("---")
-currency = st.sidebar.selectbox("Moneda de visualización", ["USD", "PEN"])
+currency = st.sidebar.selectbox("Moneda de visualización", ["PEN", "USD"])
 exchange_rate = None
 if currency == "PEN":
     exchange_rate = st.sidebar.number_input("Tipo de cambio (PEN por USD)", min_value=0.0, value=3.8, step=0.01)
 
-# Monto inicial (separado de contribuciones)
+# Monto inicial y contribuciones (separados)
 st.sidebar.markdown("---")
-initial_capital = st.sidebar.number_input("Monto inicial (en la moneda seleccionada)", min_value=0.0, value=1000.0, step=10.0)
+initial_capital = st.sidebar.number_input("Monto inicial (en la moneda seleccionada)", min_value=0.0, value=10000.0, step=100.0)
 
-# Contribuciones: se muestran sólo si se elige "Sí" y serán mensuales (como pediste)
 st.sidebar.markdown("---")
 st.sidebar.header("Contribuciones")
-contrib_bool = st.sidebar.radio("¿Se harán contribuciones periódicas?", ["No", "Sí"])
-contrib_amount = 0.0
-contrib_freq = None
+contrib_bool = st.sidebar.radio("¿Agregar contribuciones periódicas?", ["No", "Sí"])
+monthly_contrib = 0.0
 if contrib_bool == "Sí":
-    contrib_amount = st.sidebar.number_input("Monto de contribución (por periodo - mensual)", min_value=0.0, value=0.0, step=10.0)
-    contrib_freq = "Mensual"  # for clarity: we force monthly as you requested
+    monthly_contrib = st.sidebar.number_input("Monto de contribución (mensual, en la moneda seleccionada)", min_value=0.0, value=0.0, step=10.0)
 
-# Fechas
+# Periodo y fechas
 st.sidebar.markdown("---")
-start_date = st.sidebar.date_input("Fecha de inicio", value=pd.to_datetime("2015-01-01"))
-end_date = st.sidebar.date_input("Fecha final", value=pd.to_datetime("2025-01-01"))
+years = st.sidebar.slider("Horizonte (años)", min_value=1, max_value=30, value=5)
+start_date = st.sidebar.date_input("Fecha de inicio para datos (ej: 2015-01-01)", value=pd.to_datetime("2015-01-01"))
+end_date = st.sidebar.date_input("Fecha final para datos (ej: hoy)", value=pd.to_datetime(datetime.today().date()))
 
-# Mostrar peso total y validación (en main)
-total_weight = sum(weights.values())
-st.write(f"**Peso total:** {total_weight:.2f}")
-if abs(total_weight - 1) > 0.001:
-    st.error("Los pesos deben sumar 1.0 para continuar.")
-    st.stop()
+# Tipo de tasa y simulaciones (como tu notebook)
+st.sidebar.markdown("---")
+tipo_tasa = st.sidebar.selectbox("Tipo de tasa", ['Mensual histórica', 'Anual equivalente'])
+simulations = st.sidebar.number_input("Número de simulaciones (Monte Carlo)", min_value=100, max_value=20000, value=1000, step=100)
+
+# Botón de correr
+run_btn = st.sidebar.button("Ejecutar simulación")
 
 # ========================
-#  DESCARGA DE DATOS
+#    FUNCIONES AUXILIARES
 # ========================
 @st.cache_data
-def load_data(tickers, start, end):
-    df = yf.download(tickers, start=start, end=end, progress=False, auto_adjust=True)
-    # Normalizar la salida a DataFrame con tickers como columnas de precios ajustados
-    if isinstance(df.columns, pd.MultiIndex):
-        if 'Adj Close' in df.columns.get_level_values(0):
-            adj = df['Adj Close']
-        elif 'Close' in df.columns.get_level_values(0):
-            adj = df['Close']
+def get_adj_close(tickers, start, end):
+    """Descarga precios ajustados mensuales usando yfinance (Close con interval 1mo)."""
+    # yfinance returns multiindex for multiple tickers; request 'Close' then dropna
+    data = yf.download(tickers, start=start, end=end, interval='1mo', auto_adjust=True, progress=False)
+    if isinstance(data.columns, pd.MultiIndex):
+        if 'Close' in data.columns.get_level_values(0):
+            adj = data['Close']
         else:
-            adj = df.dropna(axis=1, how='all')
+            # try 'Adj Close' fallback
+            if 'Adj Close' in data.columns.get_level_values(0):
+                adj = data['Adj Close']
+            else:
+                adj = data.dropna(axis=1, how='all')
     else:
-        if 'Adj Close' in df.columns:
-            adj = df['Adj Close']
-        elif 'Close' in df.columns:
-            adj = df['Close']
+        if 'Close' in data.columns:
+            adj = data['Close']
+        elif 'Adj Close' in data.columns:
+            adj = data['Adj Close']
         else:
-            adj = df
-    # Si es Series (un ticker), convertir a DataFrame
+            adj = data
     if isinstance(adj, pd.Series):
         adj = adj.to_frame(name=tickers[0])
     return adj.dropna(how='all')
 
-data = load_data(tickers, start_date, end_date)
-if data.empty:
-    st.error("No se encontraron datos para los tickers y rango seleccionados.")
-    st.stop()
+def compute_portfolio_stats(adj_close, pesos):
+    """Calcula mean y std mensual del portafolio (basado en retornos históricos)."""
+    returns = adj_close.pct_change().dropna()
+    if returns.empty:
+        return None, None, None, None
+    # Alinear columnas con pesos
+    weights_series = pd.Series(pesos, index=adj_close.columns).reindex(columns=adj_close.columns, fill_value=0.0)
+    portfolio_returns = returns.mul(weights_series, axis=1).sum(axis=1)
+    mean_mensual = portfolio_returns.mean()
+    std_mensual = portfolio_returns.std()
+    var_mensual = portfolio_returns.var()
+    return mean_mensual, std_mensual, var_mensual, portfolio_returns
 
 # ========================
-#      CÁLCULOS
+#    LÓGICA AL PRESIONAR "Ejecutar simulación"
 # ========================
-weights_series = pd.Series(weights)
-available = [c for c in data.columns if c in weights_series.index]
-if len(available) != len(weights_series):
-    st.warning(f"Algunos tickers no tienen datos y serán excluidos: {set(weights_series.index) - set(available)}")
-    weights_series = weights_series.loc[available]
-    # Re-normalizar si se excluyeron tickers
-    weights_series = weights_series / weights_series.sum()
-
-# Calcular retornos
-returns = data[available].pct_change().dropna()
-if returns.empty:
-    st.error("No hay suficientes datos para calcular rendimientos.")
-    st.stop()
-
-# Weighted returns alineando por columna
-weighted_returns = returns.mul(weights_series, axis=1).sum(axis=1)
-
-# Construir valor del portafolio partiendo de initial_capital (en la moneda seleccionada)
-portfolio_values = [float(initial_capital)]
-dates = []
-for date, r in weighted_returns.items():
-    prev = portfolio_values[-1]
-    new_value = prev * (1 + r)
-    # Contribuciones: si el usuario dijo Sí, se añade la contribución por periodo (mensual)
-    if contrib_bool == "Sí" and contrib_amount > 0:
-        # Contrib_amount ya está en la moneda seleccionada y es independiente del monto inicial
-        new_value += float(contrib_amount)
-    portfolio_values.append(new_value)
-    dates.append(date)
-
-# Índice con punto inicial ligeramente anterior para mostrar capital inicial
-initial_date = returns.index[0] - MonthEnd(1)
-all_dates = [initial_date] + dates
-portfolio_series = pd.Series(portfolio_values, index=all_dates)
-
-# ========================
-#      GRÁFICOS (MANTENER GRÁFICO COMO ESTABA: solo cambiamos colores de la página)
-# ========================
-st.header("Crecimiento del Portafolio")
-fig, ax = plt.subplots(figsize=(10,5))
-# Usamos estilo de gráfico original (verde sobre negro) tal como pediste que no cambiara
-ax.plot(portfolio_series.index, portfolio_series.values, color="#00FF7F", marker='o', linewidth=1)
-ax.set_title("Valor del Portafolio en el Tiempo", color="#00FF7F")
-ax.set_facecolor("black")
-fig.patch.set_facecolor("black")
-ax.tick_params(colors="#00FF7F")
-for spine in ax.spines.values():
-    spine.set_color("#00FF7F")
-ax.set_ylabel(f"Valor ({currency})", color="#00FF7F")
-st.pyplot(fig)
-
-# ========================
-#  MÉTRICAS BÁSICAS (anualizadas donde corresponde)
-# ========================
-st.header("Métricas del Portafolio")
-total_return = portfolio_series.iloc[-1] - portfolio_series.iloc[0]
-
-# Inferir frecuencia para anualizar
-inferred = pd.infer_freq(returns.index)
-if inferred is None:
-    periods_per_year = 12
-else:
-    if inferred.startswith('B') or inferred.startswith('D'):
-        periods_per_year = 252
-    elif inferred.startswith('M'):
-        periods_per_year = 12
-    elif inferred.startswith('A') or inferred.startswith('Y'):
-        periods_per_year = 1
+if run_btn:
+    # Validaciones de pesos
+    weights_series = pd.Series(weights)
+    if abs(weights_series.sum() - 1.0) > 1e-6:
+        st.error("Los pesos deben sumar 1.0. Ajusta los pesos o usa los predefinidos.")
     else:
-        periods_per_year = 12
+        st.info("Descargando datos y calculando estadísticas...")
+        adj = get_adj_close(tickers, start_date, end_date)
+        if adj.empty:
+            st.error("No hay datos para los tickers y rango seleccionado.")
+        else:
+            # Si algunos tickers no están disponibles, ajustar
+            available = [c for c in adj.columns if c in weights_series.index and weights_series[c] > 0]
+            if len(available) != len(weights_series):
+                missing = set(weights_series.index) - set(available)
+                if missing:
+                    st.warning(f"Se excluirán estos tickers sin datos: {missing}")
+                # keep only available and re-normalize
+                weights_series = weights_series.loc[[c for c in available if c in weights_series.index]]
+                if weights_series.sum() == 0:
+                    st.error("No hay pesos válidos tras excluir tickers sin datos.")
+                    st.stop()
+                weights_series = weights_series / weights_series.sum()
+                adj = adj[weights_series.index]
 
-mean_period = weighted_returns.mean()
-vol_period = weighted_returns.std()
-annual_return = mean_period * periods_per_year
-annual_vol = vol_period * np.sqrt(periods_per_year)
-sharpe = annual_return / annual_vol if annual_vol > 0 else np.nan
+            mean_m, std_m, var_m, portfolio_returns = compute_portfolio_stats(adj, weights_series.values)
+            if mean_m is None:
+                st.error("No se pudo calcular estadísticas con los datos descargados.")
+            else:
+                # Ajuste de tasa si el usuario pidió anual equivalente
+                if tipo_tasa == 'Anual equivalente':
+                    mean = (1 + mean_m)**12 - 1
+                    std = std_m * np.sqrt(12)
+                    # convert back to monthly equivalents for the simulation if needed:
+                    # We will keep simulation in monthly space: convert annual mean/std to monthly:
+                    mean_monthly_for_sim = (1 + mean)**(1/12) - 1
+                    std_monthly_for_sim = std / np.sqrt(12)
+                else:
+                    mean_monthly_for_sim = mean_m
+                    std_monthly_for_sim = std_m
 
-# Mostrar métricas (incluimos etiqueta de moneda)
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Retorno total", f"{total_return:.2%}")
-c2.metric("Retorno anual (aprox.)", f"{annual_return:.2%}")
-c3.metric("Volatilidad (anualizada)", f"{annual_vol:.2%}")
-c4.metric("Sharpe Ratio (aprox.)", f"{sharpe:.3f}")
+                # Moneda: convertimos monto inicial y contribución a USD internamente porque los tickers están en USD
+                if currency == "PEN":
+                    if not exchange_rate or exchange_rate <= 0:
+                        st.error("Ingresa un tipo de cambio válido mayor a 0.")
+                        st.stop()
+                    initial_usd = float(initial_capital) / float(exchange_rate)
+                    contrib_usd = float(monthly_contrib) / float(exchange_rate) if monthly_contrib else 0.0
+                else:
+                    initial_usd = float(initial_capital)
+                    contrib_usd = float(monthly_contrib) if monthly_contrib else 0.0
 
-# Mostrar tabla de pesos finales y returns recientes
-st.subheader("Detalle de Pesos")
-st.write(pd.DataFrame({
-    "Ticker": weights_series.index,
-    "Peso": weights_series.values
-}).set_index("Ticker"))
+                months = int(years * 12)
+                # Proyección determinística con contribuciones mensuales añadidas al final de cada periodo
+                tiempo = np.arange(0, months + 1)
+                deterministico = np.zeros(months + 1)
+                deterministico[0] = initial_usd
+                for t in range(1, months + 1):
+                    deterministico[t] = deterministico[t - 1] * (1 + mean_monthly_for_sim) + contrib_usd
 
-# Si la moneda es PEN y se ingreso tipo de cambio, mostrar equivalentes en USD como referencia
-if currency == "PEN" and exchange_rate and exchange_rate > 0:
-    st.markdown(f"**Referencia:** 1 USD = {exchange_rate:.2f} PEN")
-    st.markdown("Últimos valores del portafolio (moneda seleccionada y equivalente USD):")
-    df_values = pd.DataFrame({
-        "Fecha": portfolio_series.index,
-        f"Valor ({currency})": portfolio_series.values,
-        "Valor (USD)": portfolio_series.values / exchange_rate
-    })
-    st.write(df_values.tail(5).set_index("Fecha"))
+                # Monte Carlo
+                np.random.seed(42)
+                sims = np.zeros((simulations, months + 1))
+                sims[:, 0] = initial_usd
+                for t in range(1, months + 1):
+                    # generar rendimientos mensuales
+                    rs = np.random.normal(loc=mean_monthly_for_sim, scale=std_monthly_for_sim, size=simulations)
+                    sims[:, t] = sims[:, t - 1] * (1 + rs)
+                    if contrib_usd > 0:
+                        sims[:, t] += contrib_usd
+
+                p5 = np.percentile(sims, 5, axis=0)
+                p50 = np.percentile(sims, 50, axis=0)
+                p95 = np.percentile(sims, 95, axis=0)
+
+                # Convertir de USD a moneda seleccionada para mostrar
+                if currency == "PEN":
+                    deterministico_display = deterministico * exchange_rate
+                    p5_disp = p5 * exchange_rate
+                    p50_disp = p50 * exchange_rate
+                    p95_disp = p95 * exchange_rate
+                    axis_label = f"Monto ({currency})"
+                    initial_display = initial_usd * exchange_rate
+                else:
+                    deterministico_display = deterministico.copy()
+                    p5_disp = p5.copy()
+                    p50_disp = p50.copy()
+                    p95_disp = p95.copy()
+                    axis_label = f"Monto ({currency})"
+                    initial_display = initial_usd
+
+                # ===== Mostrar resultados =====
+                st.subheader("Estadísticas históricas (mensual)")
+                st.write(pd.DataFrame({
+                    "Mean mensual": [f"{mean_m:.4f}"],
+                    "Std mensual": [f"{std_m:.4f}"],
+                    "Var mensual": [f"{var_m:.6f}"]
+                }, index=[f"Portafolio {selected_portfolio}"]))
+
+                st.subheader("Proyección y Monte Carlo")
+                fig, ax = plt.subplots(figsize=(10, 5))
+                years_axis = tiempo / 12
+                # Banda MC 5-95%
+                ax.fill_between(years_axis, p5_disp, p95_disp, color="gray", alpha=0.25, label="Banda MC 5-95%")
+                # Mediana MC
+                ax.plot(years_axis, p50_disp, color="#1f77b4", linestyle='--', label="Mediana MC")
+                # Determinístico
+                ax.plot(years_axis, deterministico_display, color="#00FF7F", marker='o', linewidth=2, label="Proyección determinística")
+                # Inicial
+                ax.axhline(y=initial_display, color='r', linestyle='--', label="Monto Inicial")
+                ax.set_title(f"Proyección de Capital - Portafolio {selected_portfolio} ({currency})")
+                ax.set_xlabel("Años")
+                ax.set_ylabel(axis_label)
+                ax.grid(True, linestyle='--', alpha=0.3)
+                ax.legend()
+                ax.set_facecolor("#000000")
+                fig.patch.set_facecolor("#060606")
+                ax.tick_params(colors="#00FF7F")
+                for spine in ax.spines.values():
+                    spine.set_color("#00FF7F")
+                st.pyplot(fig, use_container_width=True)
+
+                # Tabla resumen
+                final_det = deterministico_display[-1]
+                final_p5 = p5_disp[-1]
+                final_p50 = p50_disp[-1]
+                final_p95 = p95_disp[-1]
+
+                st.subheader("Resumen final esperado")
+                df_res = pd.DataFrame({
+                    "Escenario": ["Determinístico (mean)", "MC 5%", "MC 50% (mediana)", "MC 95%"],
+                    "Valor final": [f"{final_det:,.2f}", f"{final_p5:,.2f}", f"{final_p50:,.2f}", f"{final_p95:,.2f}"]
+                })
+                st.write(df_res.set_index("Escenario"))
+
+                # Sensibilidad tipo de cambio (si aplica)
+                if currency == "PEN":
+                    st.subheader("Sensibilidad al tipo de cambio (±5%)")
+                    tc_down = exchange_rate * 0.95
+                    tc_up = exchange_rate * 1.05
+                    df_tc = pd.DataFrame({
+                        'Tipo de cambio': [tc_down, exchange_rate, tc_up],
+                        f'Valor final ({currency})': [final_det * 0.95, final_det, final_det * 1.05]
+                    })
+                    st.write(df_tc)
+
+                # Mostrar últimos valores proyectados (tabla)
+                st.subheader("Valores proyectados (últimos 5 puntos)")
+                df_vals = pd.DataFrame({
+                    "Año": np.round(years_axis, 2),
+                    "Determinístico": deterministico_display,
+                    "MC P5": p5_disp,
+                    "MC P50": p50_disp,
+                    "MC P95": p95_disp
+                })
+                st.write(df_vals.tail(5).set_index("Año"))
+
+                st.success("Simulación completada.")
+
 else:
-    st.markdown("Últimos valores del portafolio:")
-    df_values = pd.DataFrame({
-        "Fecha": portfolio_series.index,
-        f"Valor ({currency})": portfolio_series.values
-    })
-    st.write(df_values.tail(5).set_index("Fecha"))
-
-st.markdown("""
-Nota:
-- He restaurado la opción de moneda (USD/PEN) y la entrada de tipo de cambio para referencia.
-- El gráfico mantuvo su apariencia original (línea verde sobre fondo negro) —solo cambié los colores de la página y la disposición de controles.
-- Las contribuciones son independientes del monto inicial: si seleccionas "Sí", el monto que pongas se añadirá cada periodo (mensual) aparte del capital inicial.
-""")
+    st.info("Ajusta los parámetros en la barra lateral y presiona 'Ejecutar simulación' para ver proyecciones y Monte Carlo.")
