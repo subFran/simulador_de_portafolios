@@ -152,6 +152,35 @@ st.pyplot(fig)
 # ========================
 #  MÉTRICAS BÁSICAS (sin anual equivalente)
 # ========================
+
+# ========================
+#  TABLA DE ESCENARIOS DE TIPO DE CAMBIO
+# ========================
+
+st.header("Escenarios de Tipo de Cambio (en Soles)")
+
+valor_final_usd = float(portfolio_value.iloc[-1])
+
+escenarios_tc = pd.DataFrame({
+    "Escenario": ["TC -5%", "TC Actual", "TC +5%"],
+    "Tipo de Cambio": [3.80 * 0.95, 3.80, 3.80 * 1.05],
+    "Valor Final (USD)": [
+        valor_final_usd,
+        valor_final_usd,
+        valor_final_usd
+    ],
+    "Valor Final (PEN)": [
+        valor_final_usd * (3.80 * 0.95),
+        valor_final_usd * 3.80,
+        valor_final_usd * (3.80 * 1.05)
+    ]
+})
+
+st.table(escenarios_tc.style.format({
+    "Tipo de Cambio": "{:.2f}",
+    "Valor Final (USD)": "{:,.2f}",
+    "Valor Final (PEN)": "{:,.2f}"
+}))
 st.header("Métricas del Portafolio")
 total_return = portfolio_value.iloc[-1] - 1
 volatility = weighted_returns.std()
@@ -160,3 +189,4 @@ sharpe = (weighted_returns.mean()) / volatility if volatility > 0 else 0
 st.write(f"**Retorno total:** {total_return:.2%}")
 st.write(f"**Volatilidad:** {volatility:.2%}")
 st.write(f"**Sharpe Ratio:** {sharpe:.3f}")
+
