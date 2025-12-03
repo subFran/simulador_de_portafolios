@@ -174,10 +174,17 @@ if moneda == "PEN":
             valores[-1] * 0.95,
             valores[-1],
             valores[-1] * 1.05
+        ],
+        # 🔥 NUEVO: Valor final convertido a soles (tu pedido)
+        "Valor Final (PEN)": [
+            (valores[-1] * 0.95) * (tipo_cambio * 0.95),
+            valores[-1] * tipo_cambio,
+            (valores[-1] * 1.05) * (tipo_cambio * 1.05)
         ]
     })
 
     st.table(df_tc.style.format({
         "Tipo de Cambio": "{:.2f}",
-        "Valor Final (USD)": "{:,.2f}"
+        "Valor Final (USD)": "{:,.2f}",
+        "Valor Final (PEN)": "{:,.2f}"
     }))
