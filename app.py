@@ -1,49 +1,35 @@
+# ============================================ 
+# CONFIGURACIÓN Y LIBRERÍAS 
+# ============================================
+
 import streamlit as st
+import yfinance as yf
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import matplotlib.pyplot as plt
 from pandas.tseries.offsets import MonthEnd
+from datetime import datetime
 
-# ========================
-#   ESTILO PERSONALIZADO
-# ========================
-# Colores: Verde + Negro
-st.markdown(
-    """
-    <style>
-    body {
-        background-color: #0A0A0A;
-        color: #00FF7F;
-    }
-    .stApp {
-        background-color: #0A0A0A;
-        color: #00FF7F;
-    }
-    .css-18e3th9, .css-1d391kg {
-        background-color: #0A0A0A;
-        color: #00FF7F;
-    }
-    .stSelectbox, .stNumberInput, .stTextInput, .stDateInput {
-        background-color: #0A0A0A !important;
-        color: #00FF7F !important;
-    }
-    .stButton>button {
-        background-color: #00FF7F;
-        color: black;
-        border-radius: 8px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
-st.title("Simulador de Portafolios – Qori Clean (Verde & Negro)")
+# ======== ESTILO (NO EDITADO, SOLO PEGADO) =========
+st.markdown("""<style>
+:root{
+    --card-radius: 12px;
+    --card-padding: 18px;
+    --container-max-w: 1100px;
+    --sidebar-min-w: 300px;
+    --shadow-1: 0 6px 18px rgba(0,0,0,0.08);
+    --shadow-2: 0 10px 30px rgba(0,0,0,0.06);
+}
+</style>""", unsafe_allow_html=True)
 
-# ========================
-#     CONFIGURACIÓN BASE
-# ========================
-# === PORTAFOLIOS ORIGINALES ===
+st.title("📊 Simulador de Portafolio de Inversión")
+
+# ============================================
+# 1. PORTAFOLIOS
+# ============================================
+
 portafolios = {
     'Bajo': {
         'tickers': ['AGG','GLD','LQD','VIG'],
@@ -59,134 +45,139 @@ portafolios = {
     }
 }
 
-# Selección de portafolio
-selected_portfolio = st.selectbox('Selecciona un portafolio', list(portafolios.keys()))
+# ============================================
+# 2. DESCARGA DE DATOS
+# ============================================
 
-tickers = portafolios[selected_portfolio]['tickers']
-preset_weights = portafolios[selected_portfolio]['pesos']
-weights = {}
-st.header("Pesos del Portafolio (predefinidos, editables)")
-
-cols = st.columns(4)
-for i, ticker in enumerate(tickers):
-    col = cols[i % 4]
-    weights[ticker] = col.number_input(
-        f"Peso {ticker}",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(preset_weights[i]),
-        step=0.01
-    )
-
-total_weight = sum(weights.values())(weights.values())
-st.write(f"**Peso total:** {total_weight:.2f}")
-
-if abs(total_weight - 1) > 0.001:
-    st.error("Los pesos deben sumar 1.0 para continuar.")
-    st.stop()
-
-# ========================
-#      APORTES OPCIONALES
-# ========================
-st.header("¿Se harán contribuciones?")
-contrib_bool = st.radio("Selecciona una opción:", ["No", "Sí"])
-
-contrib_amount = 0
-contrib_freq = None
-
-if contrib_bool == "Sí":
-    contrib_amount = st.number_input("Monto de contribución:", min_value=0.0, step=10.0)
-    contrib_freq = st.selectbox("Frecuencia de contribución:", ["Mensual", "Anual"])
-
-# ========================
-#  PERÍODO DE SIMULACIÓN
-# ========================
-start_date = st.date_input("Fecha de inicio", value=pd.to_datetime("2015-01-01"))
-end_date = st.date_input("Fecha final", value=pd.to_datetime("2025-01-01"))
-
-# ========================
-#  DESCARGA DE DATOS
-# ========================
 @st.cache_data
-def load_data(tickers, start, end):
-    return yf.download(tickers, start=start, end=end)["Adj Close"]
+def get_adj_close(tickers):
+    data = yf.download(
+        tickers,
+        start='2022-12-01',
+        end='2025-12-01',
+        interval='1mo',
+        auto_adjust=True,
+        progress=False
+    )
+    if isinstance(data.columns, pd.MultiIndex):
+        return data['Close'].dropna()
+    return data.dropna()
 
-data = load_data(tickers, start_date, end_date)
+# ============================================
+# 3. CÁLCULO DE ESTADÍSTICAS
+# ============================================
 
-# ========================
-#      CÁLCULOS
-# ========================
-returns = data.pct_change().dropna()
-weighted_returns = (returns * np.array(list(weights.values()))).sum(axis=1)
+def portafolio_stats(tickers, pesos):
+    adj = get_adj_close(tickers)
+    returns = adj.pct_change().dropna()
+    mean_m = returns.mean().dot(pesos)
+    cov = returns.cov()
+    port_var = float(pesos.T @ cov.values @ pesos)
+    return mean_m, port_var, np.sqrt(port_var)
 
-portfolio_value = [1]
+# ============================================
+# SIDEBAR
+# ============================================
 
-for r in weighted_returns:
-    new_value = portfolio_value[-1] * (1 + r)
+st.sidebar.header("Parámetros de Simulación")
 
-    # Aporte si corresponde
-    if contrib_bool == "Sí":
-        if contrib_freq == "Mensual":
-            new_value += contrib_amount / 12
-        elif contrib_freq == "Anual":
-            new_value += contrib_amount
+tipo_portafolio = st.sidebar.selectbox("Perfil de Riesgo", ['Bajo', 'Medio', 'Alto'])
+monto_inicial = st.sidebar.number_input("Monto Inicial", min_value=1000, value=10000)
+anos = st.sidebar.slider("Horizonte (Años)", 1, 10, 5)
+moneda = st.sidebar.selectbox("Moneda del monto inicial", ["PEN", "USD"])
+tipo_cambio = st.sidebar.number_input("Tipo de Cambio (PEN/USD)", value=3.80)
+simulaciones = st.sidebar.slider("Simulaciones Monte Carlo", 100, 5000, 1000)
 
-    portfolio_value.append(new_value)
+# ============================================
+# OBTENER PORTAFOLIO
+# ============================================
 
-portfolio_value = pd.Series(portfolio_value, index=[returns.index.min()] + list(returns.index))
+tickers = portafolios[tipo_portafolio]['tickers']
+pesos = portafolios[tipo_portafolio]['pesos']
 
-# ========================
-#      GRÁFICOS
-# ========================
-st.header("Crecimiento del Portafolio")
-fig, ax = plt.subplots(figsize=(10,5))
-ax.plot(portfolio_value)
-ax.set_title("Valor del Portafolio en el Tiempo", color="#00FF7F")
-ax.set_facecolor("black")
-fig.patch.set_facecolor("black")
-ax.tick_params(colors="#00FF7F")
-for spine in ax.spines.values():
-    spine.set_color("#00FF7F")
+# Mostrar composición
+st.sidebar.markdown("### Composición del Portafolio")
+st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": pesos}))
+
+# ============================================
+# LÓGICA PRINCIPAL
+# ============================================
+
+mean_m, var_m, std_m = portafolio_stats(tickers, pesos)
+
+# --- Conversión de moneda (Opción A confirmada) ---
+if moneda == "USD":
+    monto = monto_inicial
+else:
+    # PEN → convertir a USD
+    monto = monto_inicial / tipo_cambio
+
+# ---- PROYECCIÓN ----
+meses = anos * 12
+tiempo = np.arange(meses + 1)
+valores = monto * (1 + mean_m) ** tiempo
+
+# ---- MONTE CARLO ----
+simulaciones_array = np.zeros((simulaciones, meses + 1))
+simulaciones_array[:, 0] = monto
+
+for t in range(1, meses + 1):
+    r = np.random.normal(mean_m, std_m, simulaciones)
+    simulaciones_array[:, t] = simulaciones_array[:, t-1] * (1 + r)
+
+p5 = np.percentile(simulaciones_array, 5, axis=0)
+p95 = np.percentile(simulaciones_array, 95, axis=0)
+
+# ============================================
+# MÉTRICAS
+# ============================================
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Rendimiento Esperado", f"{mean_m*100:.2f}%")
+col2.metric("Volatilidad", f"{std_m*100:.2f}%")
+col3.metric("Valor final esperado (USD)", f"{valores[-1]:,.2f}")
+col4.metric("Varianza", f"{var_m:.6f}")
+
+# ============================================
+# GRÁFICO
+# ============================================
+
+fig, ax = plt.subplots(figsize=(10,6))
+ax.fill_between(tiempo/12, p5, p95, alpha=0.3, label="Banda 90% MC")
+ax.plot(tiempo/12, valores, color='blue')
+
+# SOLO MOSTRAR RANGO TC SI MONEDA = PEN
+if moneda == "PEN":
+    valores_min = valores * 0.95
+    valores_max = valores * 1.05
+    ax.fill_between(tiempo/12, valores_min, valores_max, color='orange', alpha=0.2, label="TC ±5%")
+
+ax.set_title(f"Proyección de Capital - Portafolio {tipo_portafolio}")
+ax.set_xlabel("Años")
+ax.set_ylabel("Monto (USD)")
+ax.grid(True, alpha=0.3)
+ax.legend()
+
 st.pyplot(fig)
 
-# ========================
-#  MÉTRICAS BÁSICAS (sin anual equivalente)
-# ========================
+# ============================================
+# TABLA DE TIPO DE CAMBIO (SOLO SI MONEDA = PEN)
+# ============================================
 
-# ========================
-#  TABLA DE ESCENARIOS DE TIPO DE CAMBIO
-# ========================
+if moneda == "PEN":
+    st.subheader("Sensibilidad al Tipo de Cambio (solo PEN)")
 
-st.header("Escenarios de Tipo de Cambio (en Soles)")
+    df_tc = pd.DataFrame({
+        "Escenario": ["TC -5%", "TC Actual", "TC +5%"],
+        "Tipo de Cambio": [tipo_cambio*0.95, tipo_cambio, tipo_cambio*1.05],
+        "Valor Final (USD)": [
+            valores[-1] * 0.95,
+            valores[-1],
+            valores[-1] * 1.05
+        ]
+    })
 
-valor_final_usd = float(portfolio_value.iloc[-1])
-
-escenarios_tc = pd.DataFrame({
-    "Escenario": ["TC -5%", "TC Actual", "TC +5%"],
-    "Tipo de Cambio": [3.80 * 0.95, 3.80, 3.80 * 1.05],
-    "Valor Final (USD)": [
-        valor_final_usd,
-        valor_final_usd,
-        valor_final_usd
-    ],
-    "Valor Final (PEN)": [
-        valor_final_usd * (3.80 * 0.95),
-        valor_final_usd * 3.80,
-        valor_final_usd * (3.80 * 1.05)
-    ]
-})
-
-st.table(escenarios_tc.style.format({
-    "Tipo de Cambio": "{:.2f}",
-    "Valor Final (USD)": "{:,.2f}",
-    "Valor Final (PEN)": "{:,.2f}"
-}))
-st.header("Métricas del Portafolio")
-total_return = portfolio_value.iloc[-1] - 1
-volatility = weighted_returns.std()
-sharpe = (weighted_returns.mean()) / volatility if volatility > 0 else 0
-
-st.write(f"**Retorno total:** {total_return:.2%}")
-st.write(f"**Volatilidad:** {volatility:.2%}")
-st.write(f"**Sharpe Ratio:** {sharpe:.3f}")
-
+    st.table(df_tc.style.format({
+        "Tipo de Cambio": "{:.2f}",
+        "Valor Final (USD)": "{:,.2f}"
+    }))
