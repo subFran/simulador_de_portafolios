@@ -24,7 +24,7 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 
-st.title("📊 Simulador de Portafolio de Inversión")
+st.title("Simulador de Portafolio de Inversión")
 
 # ============================================
 # 1. PORTAFOLIOS
