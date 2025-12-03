@@ -12,7 +12,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
-# ======== ESTILO (NO EDITADO, SOLO PEGADO) =========
+# ======== ESTILO ==========
 st.markdown("""<style>
 :root{
     --card-radius: 12px;
@@ -95,7 +95,6 @@ simulaciones = st.sidebar.slider("Simulaciones Monte Carlo", 100, 5000, 1000)
 tickers = portafolios[tipo_portafolio]['tickers']
 pesos = portafolios[tipo_portafolio]['pesos']
 
-# Mostrar composición
 st.sidebar.markdown("### Composición del Portafolio")
 st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": pesos}))
 
@@ -105,19 +104,18 @@ st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": pesos}))
 
 mean_m, var_m, std_m = portafolio_stats(tickers, pesos)
 
-# --- Conversión de moneda (Opción A confirmada) ---
+# Conversión de moneda
 if moneda == "USD":
     monto = monto_inicial
 else:
-    # PEN → convertir a USD
-    monto = monto_inicial / tipo_cambio
+    monto = monto_inicial / tipo_cambio  # PEN → USD
 
-# ---- PROYECCIÓN ----
+# PROYECCIÓN
 meses = anos * 12
 tiempo = np.arange(meses + 1)
 valores = monto * (1 + mean_m) ** tiempo
 
-# ---- MONTE CARLO ----
+# MONTE CARLO
 simulaciones_array = np.zeros((simulaciones, meses + 1))
 simulaciones_array[:, 0] = monto
 
@@ -127,6 +125,50 @@ for t in range(1, meses + 1):
 
 p5 = np.percentile(simulaciones_array, 5, axis=0)
 p95 = np.percentile(simulaciones_array, 95, axis=0)
+
+# ============================================
+# 🔥 CONTRIBUCIONES
+# ============================================
+
+st.subheader("Contribuciones adicionales")
+
+if anos == 1:
+    contrib_mensual = st.number_input(
+        "Aportación mensual (USD)",
+        min_value=0.0, value=0.0, step=10.0
+    )
+    contrib_anual = 0
+else:
+    contrib_mensual = st.number_input(
+        "Aportación mensual (USD)",
+        min_value=0.0, value=0.0, step=10.0
+    )
+    contrib_anual = st.number_input(
+        "Aportación anual (USD)",
+        min_value=0.0, value=0.0, step=50.0
+    )
+
+total_meses = anos * 12
+
+contrib_meses = np.zeros(total_meses)
+if contrib_mensual > 0:
+    contrib_meses[:] = contrib_mensual
+
+contrib_anios = np.zeros(total_meses)
+if anos > 1 and contrib_anual > 0:
+    for year in range(anos):
+        contrib_anios[year * 12] = contrib_anual
+
+aporte_total = contrib_meses + contrib_anios
+
+valores_con_aportes = []
+valor = monto
+
+for i in range(total_meses):
+    valor = valor * (1 + mean_m) + aporte_total[i]
+    valores_con_aportes.append(valor)
+
+st.metric("Valor final con aportes", f"${valores_con_aportes[-1]:,.2f}")
 
 # ============================================
 # MÉTRICAS
@@ -146,7 +188,6 @@ fig, ax = plt.subplots(figsize=(10,6))
 ax.fill_between(tiempo/12, p5, p95, alpha=0.3, label="Banda 90% MC")
 ax.plot(tiempo/12, valores, color='blue')
 
-# SOLO MOSTRAR RANGO TC SI MONEDA = PEN
 if moneda == "PEN":
     valores_min = valores * 0.95
     valores_max = valores * 1.05
@@ -161,7 +202,7 @@ ax.legend()
 st.pyplot(fig)
 
 # ============================================
-# TABLA DE TIPO DE CAMBIO (SOLO SI MONEDA = PEN)
+# TABLA TC (PEN)
 # ============================================
 
 if moneda == "PEN":
@@ -175,7 +216,6 @@ if moneda == "PEN":
             valores[-1],
             valores[-1] * 1.05
         ],
-        # 🔥 NUEVO: Valor final convertido a soles (tu pedido)
         "Valor Final (PEN)": [
             (valores[-1] * 0.95) * (tipo_cambio * 0.95),
             valores[-1] * tipo_cambio,
