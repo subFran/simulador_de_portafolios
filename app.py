@@ -54,7 +54,7 @@ def get_adj_close(tickers):
     data = yf.download(
         tickers,
         start='2022-12-01',
-        end='2025-12-01',
+        end='2025-11-30',
         interval='1mo',
         auto_adjust=True,
         progress=False
