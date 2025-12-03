@@ -9,106 +9,122 @@ from datetime import datetime
 # ===== CONFIGURACIÓN DE PÁGINA =====
 st.set_page_config(page_title="Simulador de Portafolio", layout="wide")
 
-# ===== ESTILOS: VERDES/NEGROS MÁS EVIDENTES (NO AFECTA GRÁFICO) =====
+# ===== ESTILO ELEGANTE (SIN CAMBIAR COLORES) =====
 st.markdown(
     """
     <style>
+    /* Variables simples para consistencia */
     :root{
-      --bg1: #06140f;      /* fondo principal - muy oscuro verdoso */
-      --bg2: #071f18;      /* fondo secundario */
-      --card: rgba(16,50,35,0.85); /* tarjetas/containers */
-      --text: #e6f6ee;     /* texto principal */
-      --muted: #a7d9b8;    /* texto secundario */
-      --accent: #2f8a46;   /* color de botones/acentos */
-      --accent-2: #1f5f33; /* acento oscuro */
-      --border: rgba(255,255,255,0.04);
+      --card-radius: 12px;
+      --card-padding: 18px;
+      --container-max-w: 1100px;
+      --sidebar-min-w: 300px;
+      --shadow-1: 0 6px 18px rgba(0,0,0,0.08);
+      --shadow-2: 0 10px 30px rgba(0,0,0,0.06);
     }
 
-    /* Contenedor principal */
+    /* Centrar el contenido principal y limitar ancho para lectura */
     [data-testid="stAppViewContainer"] {
-      background: linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 100%) !important;
-      color: var(--text) !important;
-      background-attachment: fixed;
+      display: flex;
+      justify-content: center;
+    }
+    .reportview-container .main .block-container {
+      max-width: var(--container-max-w);
+      padding-top: 2rem;
+      padding-bottom: 2rem;
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
     }
 
-    /* Sidebar */
+    /* Barra lateral más espaciosa */
     [data-testid="stSidebar"] {
-      background: linear-gradient(180deg, var(--card), rgba(8,24,20,0.95)) !important;
-      color: var(--text) !important;
-      border-right: 1px solid var(--border);
+      min-width: var(--sidebar-min-w);
+      padding-top: 2rem;
+      padding-left: 1.1rem;
+      padding-right: 1.1rem;
+      padding-bottom: 2rem;
     }
 
-    /* Block container (contenidos) */
-    .block-container, .reportview-container .main .block-container {
-      background-color: transparent !important;
-      color: var(--text) !important;
+    /* Tarjetas / cajas internas: fondo transparente por defecto, pero con padding, borde redondeado y sombra sutil */
+    .css-1d391kg, .css-18e3th9, .css-1v0mbdj, .stAlert, .stExpander {
+      border-radius: var(--card-radius) !important;
+      padding: var(--card-padding) !important;
+      box-shadow: var(--shadow-1) !important;
+      background-clip: padding-box;
+      transition: box-shadow 0.18s ease, transform 0.12s ease;
+    }
+    .css-1d391kg:hover, .css-18e3th9:hover, .css-1v0mbdj:hover {
+      box-shadow: var(--shadow-2) !important;
     }
 
-    /* Tarjetas / cajas internas */
-    .css-1d391kg, .css-18e3th9, .css-1v0mbdj {
-      background-color: rgba(10,30,22,0.55) !important;
-      color: var(--text) !important;
-      border: 1px solid var(--border) !important;
-      box-shadow: none !important;
-    }
-
-    /* Encabezados y textos */
-    h1, h2, h3, h4, h5, h6, p, label, span {
-      color: var(--text) !important;
-    }
-
-    /* Tablas y dataframes */
-    table, th, td {
-      color: var(--text) !important;
-      border-color: rgba(255,255,255,0.03) !important;
-    }
-
-    /* Botones */
+    /* Botones con radio y micro-animación (sin cambiar color) */
     .stButton>button, button[kind="primary"] {
-      background-color: var(--accent) !important;
-      color: white !important;
-      border: 1px solid var(--accent-2) !important;
+      border-radius: 10px !important;
+      padding: 8px 14px !important;
+      border: 1px solid rgba(0,0,0,0.06) !important;
       box-shadow: none !important;
+      transition: transform 0.09s ease, box-shadow 0.09s ease;
+      font-weight: 600 !important;
     }
     .stButton>button:hover {
-      background-color: #3fa85a !important;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
     }
 
-    /* Inputs / selects / number inputs / sliders */
+    /* Inputs, selects y sliders: mayor separación y padding (sin alterar colores) */
     input, textarea, select {
-      background-color: rgba(255,255,255,0.02) !important;
-      color: var(--text) !important;
-      border: 1px solid var(--border) !important;
+      padding: 8px 10px !important;
+      border-radius: 8px !important;
+      border: 1px solid rgba(0,0,0,0.06) !important;
     }
     .stSlider>div div[role="slider"], .stSlider>div input {
-      accent-color: var(--accent) !important;
+      margin-top: 6px;
     }
 
-    /* Métricas (valores) */
-    .stMetric > div, .stMetricValue {
-      color: var(--text) !important;
+    /* Métricas: mayor peso y espaciado */
+    .stMetric > div {
+      gap: 6px;
     }
-    .stMetricDelta {
-      color: var(--muted) !important;
+    .stMetricValue {
+      font-size: 1.25rem !important;
+      font-weight: 700 !important;
+    }
+    .stMetricLabel {
+      opacity: 0.95 !important;
+      font-weight: 600 !important;
     }
 
-    /* Links y leyendas */
-    a, .css-1r6slb0 {
-      color: var(--muted) !important;
+    /* Tablas: mayor separación entre filas y bordes sutiles (sin colores nuevos) */
+    table {
+      border-collapse: separate !important;
+      border-spacing: 0 6px !important;
+    }
+    thead th {
+      font-weight: 700 !important;
+    }
+    tbody tr {
+      border-radius: 8px;
     }
 
-    /* Evitar que se afecten imágenes y gráficos (dejamos matplotlib igual) */
+    /* Encabezado principal: un poco más compacto y elegante */
+    h1 {
+      letter-spacing: -0.6px;
+      margin-bottom: 0.35rem;
+      font-weight: 800;
+    }
+
+    /* Evitar alterar imágenes y gráficos */
     img, svg {
       filter: none !important;
     }
 
-    /* Scrollbar sutil en sidebar */
-    [data-testid="stSidebar"] ::-webkit-scrollbar {
-      width: 8px;
-    }
-    [data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
-      background-color: rgba(255,255,255,0.03);
-      border-radius: 4px;
+    /* Ajustes responsivos menores */
+    @media (max-width: 900px) {
+      .reportview-container .main .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+      }
+      [data-testid="stSidebar"] { min-width: 220px; }
     }
     </style>
     """,
