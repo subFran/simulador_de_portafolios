@@ -89,7 +89,7 @@ def portafolio_stats(tickers, pesos):
 
 st.sidebar.header("Parámetros de Simulación")
 
-tipo_portafolio = st.sidebar.selectbox("Perfil de Riesgo", ['Bajo', 'Medio', 'Alto'])
+tipo_portafolio = st.sidebar.selectbox("Perfil de Riesgo", ['Bajo', 'Medio', 'Alto','Portafolio 1','Portafolio 2'])
 monto_inicial = st.sidebar.number_input("Monto Inicial", min_value=1000, value=10000)
 anos = st.sidebar.slider("Horizonte (Años)", 1, 10, 5)
 moneda = st.sidebar.selectbox("Moneda del monto inicial", ["PEN", "USD"])
