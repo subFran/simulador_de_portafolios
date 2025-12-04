@@ -104,7 +104,7 @@ tickers = portafolios[tipo_portafolio]['tickers']
 pesos = portafolios[tipo_portafolio]['pesos']
 
 st.sidebar.markdown("### Composición del Portafolio")
-st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": (pesos*100).round2}))
+st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": pesos}))
 
 # ============================================
 # LÓGICA PRINCIPAL
