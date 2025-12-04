@@ -104,7 +104,11 @@ tickers = portafolios[tipo_portafolio]['tickers']
 pesos = portafolios[tipo_portafolio]['pesos']
 
 st.sidebar.markdown("### Composición del Portafolio")
-st.sidebar.table(pd.DataFrame({"Ticker": tickers, "Peso": pesos}))
+# --- CAMBIO REALIZADO AQUÍ ---
+df_display = pd.DataFrame({"Ticker": tickers, "Peso": pesos})
+# Multiplicamos por 100 y formateamos como string con %
+df_display["Peso"] = (df_display["Peso"] * 100).map("{:.2f}%".format)
+st.sidebar.table(df_display)
 
 # ============================================
 # LÓGICA PRINCIPAL
