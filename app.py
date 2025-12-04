@@ -42,6 +42,14 @@ portafolios = {
     'Alto': {
         'tickers': ['ARKK','NVDA','QQQ','TSLA','XBI'],
         'pesos': np.array([0.2, 0.2, 0.3, 0.1, 0.2])
+    },
+    'Portafolio 1':{
+    'tickers': ['AAPL','AGG','BRK-B','GLD','JNJ','LQD','MSFT','PG'],
+    'pesos': np.array([0.05, 0.4, 0.05, 0.1986, 0.05, 0.0835, 0.0871, 0.0808])
+    },
+    'Portafolio 2':{
+    'tickers': ['AAPL', 'AMZN', 'MSFT', 'NVDA', 'TSLA'],
+    'pesos': np.array([0.05, 0.4, 0.05, 0.4, 0.1])
     }
 }
 
